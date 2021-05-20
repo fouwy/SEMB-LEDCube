@@ -1,3 +1,43 @@
+#include <Wire.h>
+
+#define RECON    1
+#define ALL_HIGH 2
+
+int first_plane = 1;
+int plane_counter = 0; 
+
+int mode = 0;
+int mode_read = 0;
+
+//var para botao
+int switch_old = 255;
+
+// Slave addr -> 010.0A2A1A0
+int PortExpLEFT = 0x24; //100
+int PortExpCENTER = 0x26; //110
+int PortExpRIGHT = 0x27; //111
+int IOCON   = 0x0A;
+int IODIR   = 0x00;
+int IPOL    = 0x01;
+int GPINTEN = 0x02;
+int GPPU    = 0x06;
+int GPIO    = 0x09;
+int OLAT    = 0x0A;
+
+int SR_DIN = 2; //cabo verde
+int SR_CLK = 3; //cabo azul
+
+int PortExpLEFT_A = 1;
+int PortExpLEFT_B = 1;
+int PortExpCENTER_A = 1;
+int PortExpCENTER_B = 1;
+int PortExpRIGHT_A = 1;
+int PortExpRIGHT_B = 1;
+
+int LED1 = 1;
+int LED2 = 1;
+
+
 
 // these are HW definitions 
 // LEDs ports
@@ -35,9 +75,7 @@ Sched_Task_t Tasks[MAXT];
 // index of currently running task (MAXT to force searching all TCBs initially)
 byte cur_task = MAXT;
 
-//First plane of tower shift-register input (1 at start of 12 (allegedly) cycles, 0 for the rest)
-int first_plane = 1;
-int plane_counter = 0; 
+
 
 // kernel initialization routine
 
@@ -126,9 +164,6 @@ void Sched_Dispatch(void){
   }
 }
 
-//fazer as aperiodicas num ciclo for depois das periodicas no sched_dispatch usando 
-//uma variavel para ativar TasksA[0].exec = 1;
-
 
 
 
@@ -148,18 +183,25 @@ void T1() {
 
 
 void T2() {
-    if (plane_counter = 12) //nao sei se é 11 ou 12 ou o crl
-        first_plane = 1;
-        
+    
     if (first_plane) {
       digitalWrite(SR_DIN, HIGH);
       first_plane = 0;
-    }
+    } 
     else 
       digitalWrite(SR_DIN, LOW);
 
+  if (plane_counter == 11){ //nao sei se é 11 ou 12 ou o crl
+        first_plane = 1;
+        plane_counter = 0;
+    }
+
+    if (plane_counter % 2 == 0)
+      CLK_cycle(SR_CLK, 1);
+      
     plane_counter++;
     CLK_cycle(SR_CLK, 1);
+
 }
 
 
@@ -185,24 +227,66 @@ void T4() {
 // used to configure hardware resources and software structures
 
 void setup() {
-  // initialize LEDs outputs
-  pinMode(d1, OUTPUT);
+  Serial.begin(115200);
+  Wire.begin(); // Initiate the Wire library
+  I2C_write(PortExpLEFT, IOCON, 0b10100000);
+  //BANK   = 1 : sequential register addresses
+  //MIRROR = 0 : use configureInterrupt 
+  //SEQOP  = 1 : sequential operation disabled, address pointer does not increment
+  //DISSLW = 0 : slew rate enabled
+  //HAEN   = 0 : hardware address pin is always enabled on 23017
+  //ODR    = 0 : open drain output
+  //INTPOL = 0 : interrupt active low
+  
+  IOCON   = 0x05; //update IOCON addr because of BANK update
+  
+  //Initialization of LEDs
+  I2C_write(PortExpLEFT, OLAT, 0b11111100);        //Port A
+  I2C_write(PortExpLEFT, OLAT+0x10, 0b00111111);   //Port B
+  I2C_write(PortExpCENTER, OLAT, 0b11111100);      //Port A
+  I2C_write(PortExpCENTER, OLAT+0x10, 0b00111111); //Port B
+  I2C_write(PortExpRIGHT, OLAT, 0b11111100);       //Port A
+  I2C_write(PortExpRIGHT, OLAT+0x10, 0b00111111);  //Port B
+  
+  //I/O configuration -> device 0x24 (LEFT)  
+  I2C_write(PortExpLEFT, IODIR, 0b00000011);       //Port A
+  I2C_write(PortExpLEFT, IODIR+0x10, 0b11000000);  //Port B
+  I2C_write(PortExpCENTER, IODIR, 0b00000011);     //Port A
+  I2C_write(PortExpCENTER, IODIR+0x10, 0b11000000);//Port B
+  I2C_write(PortExpRIGHT, IODIR, 0b00000011);      //Port A
+  I2C_write(PortExpRIGHT, IODIR+0x10, 0b11000000); //Port B
+ 
+  //Pullup configuration -> device 0x24 (LEFT)
+  I2C_write(PortExpLEFT, GPPU, 0b00000011);        //Port A
+  I2C_write(PortExpLEFT, GPPU+0x10, 0b11000000);   //Port B
+  I2C_write(PortExpCENTER, GPPU, 0b00000011);      //Port A
+  I2C_write(PortExpCENTER, GPPU+0x10, 0b11000000); //Port B
+  I2C_write(PortExpRIGHT, GPPU, 0b00000011);       //Port A
+  I2C_write(PortExpRIGHT, GPPU+0x10, 0b11000000);  //Port B
 
-  // start with LEDs OFF
-  digitalWrite(d1, OFF);
+  pinMode(SR_DIN, OUTPUT);
+  pinMode(SR_CLK, OUTPUT);
+
+  digitalWrite(SR_DIN, LOW);
+  digitalWrite(SR_CLK, LOW);
+  
+  for(int i = 0; i < 16; i++){  
+    CLK_cycle(SR_CLK, 1);
+  }
 
   // serial comms
-  Serial.begin(115200);
+  
   
   // run the kernel initialization routine
   Sched_Init();
 
   // add all periodic tasks  (code, offset, period) in ticks
   // for the moment, ticks in 10ms -- see below timer frequency
-  Sched_AddT(T4, 1, 10);   // highest priority
-  Sched_AddT(T3, 1, 40);
-  Sched_AddT(T2, 1, 80);
-  Sched_AddT(T1, 1, 160);  // T1 with lowest priority, observe preemption
+  Sched_AddT(T1, 1, 0);  // highest priority
+  Sched_AddT(T2, 1, 50);
+ // Sched_AddT(T3, 1, 40);
+ // Sched_AddT(T4, 1, 10);   
+
   
   noInterrupts(); // disable all interrupts
 
@@ -212,7 +296,8 @@ void setup() {
   TCNT1 = 0;
  
   // register for the frequency of timer 1  
-  OCR1A = 625; // compare match register 16MHz/256/100Hz -- tick = 10ms
+  OCR1A = 125; // compare match register 16MHz/256/500Hz -- tick = 2ms
+  //OCR1A = 625; // compare match register 16MHz/256/100Hz -- tick = 10ms
   //OCR1A = 6250; // compare match register 16MHz/256/10Hz
   //OCR1A = 31250; // compare match register 16MHz/256/2Hz
   //OCR1A = 31;    // compare match register 16MHz/256/2kHz
