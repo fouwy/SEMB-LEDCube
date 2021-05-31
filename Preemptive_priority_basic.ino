@@ -183,24 +183,25 @@ void T1() {
 
 
 void T2() {
-    
-    if (first_plane) {
-      digitalWrite(SR_DIN, HIGH);
-      first_plane = 0;
-    } 
-    else 
-      digitalWrite(SR_DIN, LOW);
-
-  if (plane_counter == 11){ //nao sei se é 11 ou 12 ou o crl
+  
+  if (first_plane) {
+    digitalWrite(SR_DIN, HIGH);
+    first_plane = 0;
+  } 
+  else 
+    digitalWrite(SR_DIN, LOW);
+  
+  if (plane_counter == 11){
         first_plane = 1;
         plane_counter = 0;
     }
-
-    if (plane_counter % 2 == 0)
+  
+  //Se for numero par no SR carregar a imagem para o proximo e avançar
+  if (plane_counter % 2 == 0)
       CLK_cycle(SR_CLK, 1);
       
-    plane_counter++;
-    CLK_cycle(SR_CLK, 1);
+  plane_counter++;
+  CLK_cycle(SR_CLK, 1);
 
 }
 
@@ -281,7 +282,7 @@ void setup() {
   Sched_Init();
 
   // add all periodic tasks  (code, offset, period) in ticks
-  // for the moment, ticks in 10ms -- see below timer frequency
+  // for the moment, ticks in 2ms -- see below timer frequency
   Sched_AddT(T1, 1, 0);  // highest priority
   Sched_AddT(T2, 1, 50);
  // Sched_AddT(T3, 1, 40);
