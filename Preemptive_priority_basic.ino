@@ -180,7 +180,6 @@ void T1()
 
 void T2()
 {
-
     if (first_plane)
     {
         digitalWrite(SR_DIN, HIGH);
